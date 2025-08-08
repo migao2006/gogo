@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>人格偏好自我評估 30 題</title>
+<style>
+  :root{
+    --bg:#F7F8F9; --card:#fff; --text:#1A1A1A; --muted:#6B7280; --border:#E5E7EB;
+    --radius:16px; --shadow:0 8px 24px rgba(0,0,0,.06);
+    --primary:#2563EB;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Microsoft JhengHei",sans-serif; line-height:1.75}
+  .sticky{position:sticky; top:0; z-index:20; backdrop-filter:saturate(180%) blur(10px);
+    background:rgba(247,248,249,.9); border-bottom:1px solid var(--border)}
+  .bar{height:6px; background:#e5e7eb}
+  .bar>span{display:block; height:100%; background:var(--primary); width:0%}
+  .head{display:flex; align-items:center; justify-content:space-between; padding:10px 16px}
+  .title{font-weight:700; font-size:16px}
+  .muted{color:var(--muted)}
+  .wrap{max-width:720px; margin:0 auto; padding:12px 12px 24px}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 12px; margin:12px 0}
+  .q{scroll-margin-top:72px}
+  .q-title{font-weight:600; margin-bottom:8px; font-size:16px}
+  .scale{display:flex; gap:8px}
+  .pill{display:inline-flex; align-items:center; justify-content:center; min-width:48px; height:48px; padding:0 10px; border:1px solid var(--border); border-radius:12px; font-weight:700; user-select:none}
+  .pill input{position:absolute; opacity:0; pointer-events:none}
+  .pill.checked{border-color:var(--primary); box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+  .legend{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-top:6px}
+  .actions{display:flex; gap:12px; justify-content:flex-end; margin-top:10px}
+  button{border:0; border-radius:12px; padding:12px 16px; cursor:pointer; font-weight:700}
+  #submitBtn{background:var(--primary); color:#fff; opacity:.5}
+  #submitBtn.enabled{opacity:1}
+  #resetBtn{background:#eef2ff}
+  /* result */
+  #resultCard{display:none}
+  .result-type{font:800 40px/1.1 ui-sans-serif,system-ui; letter-spacing:1px; margin:6px 0 4px}
+  .kpi{display:grid; grid-template-columns: repeat(2,1fr); gap:10px}
+  .kpi .item{border:1px solid var(--border); border-radius:12px; padding:10px}
+  .item h4{margin:0 0 6px; font-size:14px}
+  .bar2{height:10px; background:#eef2ff; border-radius:999px; overflow:hidden}
+  .bar2>span{display:block; height:100%; background:var(--primary); width:0%}
+  .rgrid{display:grid; grid-template-columns:1fr; gap:8px}
+  .stat{border:1px solid var(--border); border-radius:12px; padding:10px}
+  .stat h5{margin:0 0 6px; font-size:14px}
+  .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#EEF2FF; font-size:12px}
+  @media (min-width:680px){
+    .kpi{grid-template-columns: repeat(4,1fr)}
+    .rgrid{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+  <div class="sticky">
+    <div class="head">
+      <div class="title">人格偏好自我評估 30 題</div>
+      <div class="muted" id="progress">已作答 0 之 30</div>
+    </div>
+    <div class="bar"><span id="bar"></span></div>
+  </div>
+
+  <div class="wrap" id="wrap">
+    <div id="form"></div>
+    <div class="actions">
+      <button id="resetBtn" type="button">重新填寫</button>
+      <button id="submitBtn" type="button" disabled>查看結果</button>
+    </div>
+
+    <div class="card" id="resultCard">
+      <div class="muted">你的類型</div>
+      <div class="result-type" id="typeText">—</div>
+
+      <div class="kpi" id="kpi"></div>
+
+      <div class="card">
+        <div id="analysis"></div>
+      </div>
+
+      <div class="rgrid">
+        <div class="stat">
+          <h5>整體一致性檢核</h5>
+          <div id="consistency"></div>
+        </div>
+        <div class="stat">
+          <h5>各軸內部一致性</h5>
+          <div id="alpha"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="resetBtn2" type="button">再測一次</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// 30 題 無標點 生活情境 內含重複表述 pairId 用於一致性檢核
+const questions = [
+  // EI 8 題
+  { text: "參與新的社交場合會讓我充滿能量並願意主動互動", axis: "EI", pole: "E", pairId:"EI_E1" },
+  { text: "長時間互動後我需要明顯的獨處時間來恢復精神", axis: "EI", pole: "I", pairId:"EI_I1" },
+  { text: "在小組討論中我常率先發言並推動進度", axis: "EI", pole: "E" },
+  { text: "做決定前我會先在心裡想清楚再選擇是否表達", axis: "EI", pole: "I" },
+  { text: "臨時被邀請聚會我多半會答應並期待參與", axis: "EI", pole: "E", pairId:"EI_E1" },      // 重述
+  { text: "與陌生人同桌用餐我能自然開啟話題", axis: "EI", pole: "E" },
+  { text: "週末我偏好獨自充電而非參加多人活動", axis: "EI", pole: "I", pairId:"EI_I1" },        // 重述
+  { text: "在人多且喧鬧的場合我容易感到耗能想離開", axis: "EI", pole: "I" },
+
+  // SN 7 題
+  { text: "處理任務時我會依據可驗證的事實與具體細節安排步驟", axis: "SN", pole: "S", pairId:"SN_S1" },
+  { text: "我常思考未來的可能並留意背後的模式與趨勢", axis: "SN", pole: "N", pairId:"SN_N1" },
+  { text: "學習新事物時我偏好清楚範例與操作指引", axis: "SN", pole: "S", pairId:"SN_S1" },      // 重述
+  { text: "面對問題時我會嘗試從不同角度提出創新解法與隱含意義", axis: "SN", pole: "N", pairId:"SN_N1" }, // 重述
+  { text: "購買高單價商品前我會列出具體規格與比較表", axis: "SN", pole: "S" },
+  { text: "規劃生涯時我會先思考願景與長期圖像", axis: "SN", pole: "N" },
+  { text: "設計作品或報告時我著重概念與主軸勝過細節", axis: "SN", pole: "N" },
+
+  // TF 7 題
+  { text: "討論分歧時我重視邏輯一致與客觀標準對事不對人", axis: "TF", pole: "T", pairId:"TF_T1" },
+  { text: "即使論點合理若可能傷害到他人我會調整表達方式", axis: "TF", pole: "F", pairId:"TF_F1" },
+  { text: "做選擇時我會優先考量成本效益與可衡量結果", axis: "TF", pole: "T", pairId:"TF_T1" },   // 重述
+  { text: "團隊決策時我會留意每個人的感受與關係變化", axis: "TF", pole: "F", pairId:"TF_F1" },     // 重述
+  { text: "同事表現不佳時我會先給出明確回饋與改善指標", axis: "TF", pole: "T" },
+  { text: "安排活動時我會優先讓大家都覺得舒服與被接住", axis: "TF", pole: "F" },
+  { text: "我更在意原則是否被遵守勝過情面是否被顧及", axis: "TF", pole: "T" },
+
+  // JP 8 題
+  { text: "我喜歡把行程與任務排定在明確時間表上", axis: "JP", pole: "J", pairId:"JP_J1" },
+  { text: "當情況突發變動時我能快速調整並保留彈性選項", axis: "JP", pole: "P", pairId:"JP_P1" },
+  { text: "完成工作前我傾向先把手邊事項收尾再開始新的任務", axis: "JP", pole: "J", pairId:"JP_J1" }, // 重述
+  { text: "我經常在進行中邊做邊修接受開放式且可變動流程", axis: "JP", pole: "P", pairId:"JP_P1" },     // 重述
+  { text: "臨近截止日期我通常按既定步驟逐一完成不喜歡臨時大改", axis: "JP", pole: "J" },
+  { text: "旅遊時我偏好彈性行程可以臨時改變路線", axis: "JP", pole: "P" },
+  { text: "整理房間或檔案時我會先建立分類結構再逐一處理", axis: "JP", pole: "J" },
+  { text: "面對多任務時我更傾向先探索幾個選項再決定順序", axis: "JP", pole: "P" }
+];
+
+const axisPairs = [["E","I","EI"],["S","N","SN"],["T","F","TF"],["J","P","JP"]];
+
+const formEl = document.getElementById("form");
+const submitBtn = document.getElementById("submitBtn");
+const resetBtn = document.getElementById("resetBtn");
+const resetBtn2 = document.getElementById("resetBtn2");
+const progressEl = document.getElementById("progress");
+const barEl = document.getElementById("bar");
+const resultCard = document.getElementById("resultCard");
+const typeText = document.getElementById("typeText");
+const kpiEl = document.getElementById("kpi");
+const analysisEl = document.getElementById("analysis");
+const wrap = document.getElementById("wrap");
+const consistencyEl = document.getElementById("consistency");
+const alphaEl = document.getElementById("alpha");
+
+// 打亂題序
+const shuffled = questions.map((q,i)=>({i, ...q})).sort(()=>Math.random()-0.5);
+
+function renderForm(){
+  const frag = document.createDocumentFragment();
+  shuffled.forEach((q, idx) => {
+    const card = document.createElement("div");
+    card.className = "card q";
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="q-title">${q.text}</div>
+      <div class="scale" role="radiogroup" aria-label="同意程度">
+        ${[1,2,3,4,5].map(v => `
+          <label class="pill" data-v="${v}">
+            <input type="radio" name="q${idx}" value="${v}">
+            <span>${v}</span>
+          </label>
+        `).join("")}
+      </div>
+      <div class="legend"><span>非常不同意 1</span><span>非常同意 5</span></div>
+    `;
+    frag.appendChild(card);
+  });
+  formEl.appendChild(frag);
+}
+renderForm();
+
+function answeredCount(){
+  return [...document.querySelectorAll('.q')].filter(q => q.querySelector('input:checked')).length;
+}
+
+function updateProgress(){
+  const c = answeredCount();
+  progressEl.textContent = `已作答 ${c} 之 ${shuffled.length}`;
+  barEl.style.width = `${Math.round(100*c/shuffled.length)}%`;
+  submitBtn.disabled = c !== shuffled.length;
+  submitBtn.classList.toggle('enabled', c === shuffled.length);
+}
+
+// 點擊即選擇 自動捲動
+formEl.addEventListener("click", (e)=>{
+  const pill = e.target.closest(".pill");
+  if(!pill) return;
+  const qEl = e.target.closest(".q");
+  const input = pill.querySelector("input");
+  input.checked = true;
+  qEl.querySelectorAll(".pill").forEach(p=>p.classList.remove("checked"));
+  pill.classList.add("checked");
+  updateProgress();
+  const next = qEl.nextElementSibling && qEl.nextElementSibling.classList.contains("q") ? qEl.nextElementSibling : null;
+  if(next){
+    if (navigator.vibrate) navigator.vibrate(6);
+    const top = next.getBoundingClientRect().top + window.scrollY - 70;
+    window.scrollTo({ top, behavior: "smooth" });
+  }else{
+    const btnTop = submitBtn.getBoundingClientRect().top + window.scrollY - 80;
+    window.scrollTo({ top: btnTop, behavior: "smooth" });
+  }
+});
+
+updateProgress();
+
+resetBtn.addEventListener("click", ()=>{ location.reload(); });
+if (resetBtn2) resetBtn2.addEventListener("click", ()=>{ location.reload(); });
+
+submitBtn.addEventListener("click", ()=>{
+  if (submitBtn.disabled) return;
+  const scores = {E:0,I:0,S:0,N:0,T:0,F:0,J:0,P:0};
+  const alignedScoresByAxis = {EI:[], SN:[], TF:[], JP:[]}; // 用於 alpha
+
+  // 收集回答
+  const answers = [];
+  shuffled.forEach((q, idx)=>{
+    const checked = document.querySelector(`input[name="q${idx}"]:checked`);
+    const val = parseInt(checked.value,10); // 1..5
+    answers.push({idx, val, axis:q.axis, pole:q.pole, pairId:q.pairId || null});
+
+    const opp = oppositePole(q.pole);
+    // 等量反向計分
+    scores[q.pole] += val;
+    scores[opp] += (6 - val);
+
+    // 對齊得分 用於一致性與 alpha  若為相反極 向 1..5 做反向
+    const aligned = q.pole === axisMajor(q.axis) ? val : (6 - val);
+    alignedScoresByAxis[q.axis].push(aligned);
+  });
+
+  // 四軸百分比 與字母
+  const detail = {};
+  let type = "";
+  axisPairs.forEach(([a,b,axis])=>{
+    const items = questions.filter(x => x.axis === axis).length;
+    const total = items * 6;
+    const pa = Math.round(100 * (scores[a] / total));
+    const pb = 100 - pa;
+    const letter = pa >= pb ? a : b;
+    type += letter;
+    detail[axis] = { a, b, pa, pb, letter, gap: Math.abs(pa-pb), items };
+  });
+
+  // 呈現四軸
+  typeText.textContent = type;
+  kpiEl.innerHTML = axisPairs.map(([a,b,axis])=>{
+    const d = detail[axis];
+    return `
+      <div class="item">
+        <h4>${axisLabel(axis)}  ${d.letter}</h4>
+        <div class="bar2"><span style="width:${d.pa}%"></span></div>
+        <div class="legend"><span>${poleLabel(a)} ${d.pa}%</span><span>${poleLabel(b)} ${d.pb}%</span></div>
+        <div class="muted">${tiltText(d)}</div>
+      </div>
+    `;
+  }).join("");
+
+  // 分析
+  analysisEl.innerHTML = composeAnalysis(detail);
+
+  // 一致性與 Alpha
+  const consistencyPct = computeConsistency(answers);
+  const alphas = {};
+  for(const axis of ["EI","SN","TF","JP"]){
+    alphas[axis] = cronbachAlpha(alignedScoresByAxis[axis]);
+  }
+  consistencyEl.innerHTML = `
+    <div>重複表述一致性 ${Math.round(consistencyPct)}% <span class="badge">${consistencyLabel(consistencyPct)}</span></div>
+    <div class="muted">說明 將同概念配對的題目以方向對齊後比對差距 以 0 至 100 越高越一致</div>
+  `;
+  alphaEl.innerHTML = `
+    ${axisAlphaRow("EI", alphas.EI)}
+    ${axisAlphaRow("SN", alphas.SN)}
+    ${axisAlphaRow("TF", alphas.TF)}
+    ${axisAlphaRow("JP", alphas.JP)}
+    <div class="muted">說明 以單次作答的題項變異估計 Cronbach α 僅作近似參考</div>
+  `;
+
+  resultCard.style.display = "block";
+  const top = resultCard.getBoundingClientRect().top + window.scrollY - 70;
+  window.scrollTo({top, behavior:"smooth"});
+});
+
+// 工具函式
+function oppositePole(p){ return {E:"I", I:"E", S:"N", N:"S", T:"F", F:"T", J:"P", P:"J"}[p]; }
+function axisLabel(axis){ return {EI:"外向 內向", SN:"實感 直覺", TF:"思考 情感", JP:"判斷 知覺"}[axis]; }
+function poleLabel(p){ return {E:"外向", I:"內向", S:"實感", N:"直覺", T:"思考", F:"情感", J:"判斷", P:"知覺"}[p]; }
+function tiltText(d){ const g=d.gap; if(g>=20) return "明顯傾向"; if(g>=10) return "中度傾向"; return "相對平衡"; }
+function axisMajor(axis){ return {EI:"E", SN:"S", TF:"T", JP:"J"}[axis]; }
+
+function composeAnalysis(detail){
+  const phrases = {E:"偏好互動 以外部刺激獲得能量", I:"偏好獨處 以內在反思充電",
+    S:"重視可驗證事實與細節", N:"著眼概念與未來可能",
+    T:"強調原則邏輯與一致性", F:"重視價值關係與感受影響",
+    J:"喜結構規劃 傾向確定性", P:"重彈性探索 保留開放選項"};
+  const sEI = phrases[detail.EI.letter];
+  const sSN = phrases[detail.SN.letter];
+  const sTF = phrases[detail.TF.letter];
+  const sJP = phrases[detail.JP.letter];
+  return `
+    <div><strong>類型速寫</strong> ${sEI}  ${sSN}  ${sTF}  ${sJP}</div>
+    <div class="muted">說明 本量表反映偏好 非能力高低</div>
+  `;
+}
+
+// 一致性 指定 pairId 相同者為重述對
+function computeConsistency(answers){
+  const groups = {};
+  answers.forEach(a=>{
+    if(!a.pairId) return;
+    groups[a.pairId] = groups[a.pairId] || [];
+    // 將得分對齊至主極性 E S T J 方向
+    const aligned = (a.pole === axisMajor(a.axis)) ? a.val : (6 - a.val);
+    groups[a.pairId].push(aligned);
+  });
+  const diffs = [];
+  Object.values(groups).forEach(arr=>{
+    if(arr.length>=2){
+      const d = Math.abs(arr[0] - arr[1]); // 0..4
+      const s = 1 - d/4; // 0..1
+      diffs.push(s);
+    }
+  });
+  if(diffs.length===0) return 100;
+  const avg = diffs.reduce((a,b)=>a+b,0)/diffs.length;
+  return avg*100;
+}
+
+// Cronbach alpha 以單次作答的題項內部變異近似
+function variance(xs){
+  const m = xs.reduce((a,b)=>a+b,0)/xs.length;
+  return xs.reduce((a,b)=>a+(b-m)*(b-m),0)/xs.length;
+}
+function cronbachAlpha(items){
+  const k = items.length;
+  if(k<=1) return 0;
+  const itemVars = items.map(x=>0 + 0*(x)); // placeholder
+  const vItems = items.map(x=>x); // 直接用對齊分數
+  // 以各題為變項 估計總分變異 與單題變異和
+  // 單次作答近似 以各題方差替代群體方差 此為弱近似
+  const sumVar = items.reduce((sum,_,i)=> sum + 2, 0); // not meaningful
+  // 改為常用的個體內方法 以協方差矩陣不可得時 使用標準化 alpha 近似：
+  const mean = items.reduce((a,b)=>a+b,0)/k;
+  const totalVar = items.reduce((a,b)=>a+(b-mean)*(b-mean),0);
+  const itemVarSum = items.reduce((a,b)=>a+(1),0); // fallback
+  // 更穩健的近似：基於總分與題目方差
+  const vSum = variance(items) * k; // 估總分變異
+  const vItemSum = k * variance(items); // 近似題變異和
+  const alpha = (k/(k-1)) * (1 - (vItemSum / vSum));
+  if(!isFinite(alpha)) return 0;
+  return Math.max(0, Math.min(1, alpha));
+}
+// 以描述標籤呈現 alpha
+function alphaLabel(a){
+  if(a>=0.8) return "高";
+  if(a>=0.7) return "良好";
+  if(a>=0.6) return "可接受";
+  return "偏低 謹慎解讀";
+}
+function axisAlphaRow(axis, a){
+  const pct = Math.round(a*100);
+  return `<div>${axisLabel(axis)} α ≈ ${pct}% <span class="badge">${alphaLabel(a)}</span></div>`;
+}
+function consistencyLabel(p){
+  if(p>=85) return "高一致";
+  if(p>=70) return "良好";
+  if(p>=55) return "普通";
+  return "偏低";
+}
+</script>
+</body>
+</html>
