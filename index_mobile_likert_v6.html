@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>人格偏好自我評估 Likert 版</title>
+<style>
+  :root{
+    --bg:#F7F8F9; --card:#fff; --text:#111827; --muted:#6B7280; --border:#E5E7EB;
+    --radius:16px; --shadow:0 8px 24px rgba(0,0,0,.06);
+    --primary:#2563EB;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,"Microsoft JhengHei",sans-serif; line-height:1.75}
+  .sticky{position:sticky; top:0; z-index:20; backdrop-filter:saturate(180%) blur(10px);
+    background:rgba(247,248,249,.9); border-bottom:1px solid var(--border)}
+  .bar{height:6px; background:#e5e7eb}
+  .bar>span{display:block; height:100%; background:#2563EB; width:0%}
+  .head{display:flex; align-items:center; justify-content:space-between; padding:10px 16px}
+  .title{font-weight:700; font-size:16px}
+  .muted{color:var(--muted)}
+  .wrap{max-width:720px; margin:0 auto; padding:12px 12px 24px}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 12px; margin:12px 0}
+  .q{scroll-margin-top:72px}
+  .q-title{font-weight:600; margin-bottom:8px; font-size:16px}
+  .scale{display:flex; gap:8px}
+  .pill{display:inline-flex; align-items:center; justify-content:center; min-width:48px; height:48px; padding:0 10px; border:1px solid var(--border); border-radius:12px; font-weight:700; user-select:none}
+  .pill input{position:absolute; opacity:0; pointer-events:none}
+  .pill.checked{border-color:#2563EB; box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+  .legend{display:flex; justify-content:space-between; font-size:13px; color:var(--muted); margin-top:6px}
+  .actions{display:flex; gap:12px; justify-content:flex-end; margin-top:10px}
+  button{border:0; border-radius:12px; padding:12px 16px; cursor:pointer; font-weight:700}
+  #submitBtn{background:#2563EB; color:#fff; opacity:.5}
+  #submitBtn.enabled{opacity:1}
+  #resetBtn{background:#eef2ff}
+  /* chooser */
+  .chooser .opt{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+  .chooser .opt label{border:1px solid var(--border); padding:10px 12px; border-radius:12px; cursor:pointer; text-align:center}
+  .chooser input{accent-color:#2563EB}
+  /* result */
+  #resultCard{display:none}
+  .result-type{font:800 40px/1.1 ui-sans-serif,system-ui; letter-spacing:1px; margin:6px 0 4px}
+  .kpi{display:grid; grid-template-columns: repeat(2,1fr); gap:10px}
+  .kpi .item{border:1px solid var(--border); border-radius:12px; padding:10px}
+  .item h4{margin:0 0 6px; font-size:14px}
+  .bar2{height:10px; background:#eef2ff; border-radius:999px; overflow:hidden}
+  .bar2>span{display:block; height:100%; background:#2563EB; width:0%}
+  .rgrid{display:grid; grid-template-columns:1fr; gap:8px}
+  .stat{border:1px solid var(--border); border-radius:12px; padding:10px}
+  .stat h5{margin:0 0 6px; font-size:14px}
+  .badge{display:inline-block; padding:2px 8px; border-radius:999px; background:#EEF2FF; font-size:12px}
+  @media (min-width:680px){
+    .kpi{grid-template-columns: repeat(4,1fr)}
+    .rgrid{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+  <div class="sticky">
+    <div class="head">
+      <div class="title">人格偏好自我評估 Likert 版</div>
+      <div class="muted" id="progress">請選擇題數開始作答</div>
+    </div>
+    <div class="bar"><span id="bar"></span></div>
+  </div>
+
+  <div class="wrap" id="wrap">
+
+    <div class="card chooser" id="chooser">
+      <div class="q-title">選擇測驗題數</div>
+      <div class="opt"><!-- JS 生成選項 --></div>
+      <div class="actions">
+        <button id="startBtn" type="button">開始測驗</button>
+      </div>
+      <div class="muted">說明 各題 1 至 5 分 無標點 使用空格 題幹以日常情境描述 重述題以不同表述出現用於一致性檢核</div>
+    </div>
+
+    <div id="form"></div>
+    <div class="actions" id="formActions" style="display:none">
+      <button id="resetBtn" type="button">重新填寫</button>
+      <button id="submitBtn" type="button" disabled>查看結果</button>
+    </div>
+
+    <div class="card" id="resultCard">
+      <div class="muted">你的類型</div>
+      <div class="result-type" id="typeText">—</div>
+
+      <div class="kpi" id="kpi"></div>
+
+      <div class="card">
+        <div id="analysis"></div>
+      </div>
+
+      <div class="rgrid">
+        <div class="stat">
+          <h5>重述一致性</h5>
+          <div id="consistency"></div>
+        </div>
+        <div class="stat">
+          <h5>軸內重述一致性</h5>
+          <div id="axisConsistency"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="resetBtn2" type="button">再測一次</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ========== 題庫與生成 ==========
+// 規則：base 陳述完全不含情境字眼 由 contexts 前綴 以避免重複或尾綴
+const contexts = [
+  "學校課堂討論中",
+  "社團活動場合",
+  "家庭聚會時",
+  "朋友相約外出時",
+  "線上會議中",
+  "旅途中",
+  "日常採買時",
+  "午休或通勤時間",
+  "影劇或遊戲選擇時",
+  "排隊等候時",
+  "運動或健身時",
+  "自習或做作業時"
+];
+function withContext(c, s){ return `${c} ${s}`; }
+
+// base 陳述不帶情境字眼
+const bank = {
+  EI: {
+    E: [
+      {id:"EI_E1", s:"我常率先發言推動交流"},
+      {id:"EI_E2", s:"我會主動結識新朋友分享近況"},
+      {id:"EI_E3", s:"我樂於與不同組的人聊天"},
+      {id:"EI_E4", s:"我在社群平台經常主動互動"},
+      {id:"EI_E5", s:"我喜歡在人群互動獲得能量"},
+      {id:"EI_E6", s:"我通常願意臨時加入活動"},
+      {id:"EI_E7", s:"我容易與陌生人開啟話題"},
+      {id:"EI_E8", s:"我樂於在場合中介紹彼此認識"}
+    ],
+    I: [
+      {id:"EI_I1", s:"長談後我需要獨處時間恢復精神"},
+      {id:"EI_I2", s:"喧鬧場合會讓我感到耗能想離開"},
+      {id:"EI_I3", s:"我偏好安靜時間來整理思緒"},
+      {id:"EI_I4", s:"我會先觀察再決定是否互動"},
+      {id:"EI_I5", s:"我更習慣與熟悉的人待在一起"},
+      {id:"EI_I6", s:"我傾向用文字溝通再安排見面"},
+      {id:"EI_I7", s:"我享受一個人的沉浸活動"},
+      {id:"EI_I8", s:"我需要空間與時間來充電"}
+    ]
+  },
+  SN: {
+    S: [
+      {id:"SN_S1", s:"我會依據可驗證事實與細節安排步驟"},
+      {id:"SN_S2", s:"學習時我偏好清楚範例與操作指引"},
+      {id:"SN_S3", s:"購物前我會看規格與實際評價"},
+      {id:"SN_S4", s:"我習慣用待辦清單檢核進度"},
+      {id:"SN_S5", s:"我會從過往經驗推估可行方案"},
+      {id:"SN_S6", s:"我偏好一步一步解題避免跳躍思考"},
+      {id:"SN_S7", s:"我在整理資料時注重準確與格式"},
+      {id:"SN_S8", s:"我做事講求可落地的細節"}
+    ],
+    N: [
+      {id:"SN_N1", s:"我常思考未來可能與背後模式"},
+      {id:"SN_N2", s:"我喜歡從不同角度提出新點子"},
+      {id:"SN_N3", s:"我先想像長期圖像再安排步驟"},
+      {id:"SN_N4", s:"我會連結概念尋找隱含意義"},
+      {id:"SN_N5", s:"我會先定義原則再回推路線"},
+      {id:"SN_N6", s:"我注重大方向勝過零碎細節"},
+      {id:"SN_N7", s:"我喜歡用模型比喻理解事物"},
+      {id:"SN_N8", s:"我偏好探索尚未被證實的想法"}
+    ]
+  },
+  TF: {
+    T: [
+      {id:"TF_T1", s:"我重視邏輯一致與客觀標準對事不對人"},
+      {id:"TF_T2", s:"我做選擇時會比較利弊與結果"},
+      {id:"TF_T3", s:"我在討論中會直接指出重點"},
+      {id:"TF_T4", s:"我會用事證支持主張"},
+      {id:"TF_T5", s:"遇到分歧我會先釐清標準與規則"},
+      {id:"TF_T6", s:"我安排優先順序時以影響與產出為主"},
+      {id:"TF_T7", s:"我在回饋時偏好具體可執行建議"},
+      {id:"TF_T8", s:"我做決策時保持原則一致性"}
+    ],
+    F: [
+      {id:"TF_F1", s:"若可能傷害他人我會調整表達方式"},
+      {id:"TF_F2", s:"團體中我會留意每個人感受"},
+      {id:"TF_F3", s:"安排活動時我會顧及不同需求"},
+      {id:"TF_F4", s:"我會先傾聽再提出建議"},
+      {id:"TF_F5", s:"我看重關係品質與互信"},
+      {id:"TF_F6", s:"我會協調氛圍讓合作更順"},
+      {id:"TF_F7", s:"我在回饋時注意語氣與感受"},
+      {id:"TF_F8", s:"我會衡量決策對人際的影響"}
+    ]
+  },
+  JP: {
+    J: [
+      {id:"JP_J1", s:"我把行程與任務排定在明確時間表上"},
+      {id:"JP_J2", s:"完成工作前我先把手邊事項收尾"},
+      {id:"JP_J3", s:"臨近截止我按既定步驟逐一完成"},
+      {id:"JP_J4", s:"我喜歡固定節奏與清楚里程碑"},
+      {id:"JP_J5", s:"出門前我會先把路線與時間安排好"},
+      {id:"JP_J6", s:"整理時我會先分類再逐一處理"},
+      {id:"JP_J7", s:"我喜歡在開始前把需求與範圍講清楚"},
+      {id:"JP_J8", s:"我會提前準備降低最後時刻壓力"}
+    ],
+    P: [
+      {id:"JP_P1", s:"情況變動時我能快速調整保留選項"},
+      {id:"JP_P2", s:"我在進行中邊做邊修接受可變動流程"},
+      {id:"JP_P3", s:"旅遊時我偏好彈性行程可以臨時更改"},
+      {id:"JP_P4", s:"面對多任務時我先探索再決定順序"},
+      {id:"JP_P5", s:"我能在不完整資訊下先行動後調整"},
+      {id:"JP_P6", s:"我喜歡保留空檔給臨時靈感與選擇"},
+      {id:"JP_P7", s:"我對開放式目標感到自在"},
+      {id:"JP_P8", s:"我能在限制中找到變通"}
+    ]
+  }
+};
+
+function rand(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+function buildItems(targetCount){
+  const order = ["EI","SN","TF","JP"];
+  const base = Math.floor(targetCount/4);
+  const rest = targetCount % 4;
+  const counts = {EI:base, SN:base, TF:base, JP:base};
+  for(let i=0;i<rest;i++) counts[order[i]]++;
+
+  const items = [];
+  for(const axis of order){
+    const n = counts[axis];
+    const poles = axis==="EI" ? ["E","I"] : axis==="SN" ? ["S","N"] : axis==="TF" ? ["T","F"] : ["J","P"];
+    let quotaA = Math.floor(n/2);
+    let quotaB = n - quotaA;
+
+    // 目標 1/4 題形成重述對 以不同情境呈現同概念
+    const pairTarget = Math.max(1, Math.floor(n/4));
+    for(let p=0;p<pairTarget;p++){
+      const pole = p%2===0 ? poles[0] : poles[1];
+      const rec = rand(bank[axis][pole]);
+      const ctx1 = rand(contexts);
+      const ctx2 = rand(contexts);
+      items.push({ text: withContext(ctx1, rec.s), axis, pole, pairId: rec.id });
+      items.push({ text: withContext(ctx2, rec.s), axis, pole, pairId: rec.id });
+      if(pole===poles[0]) quotaA -= 2; else quotaB -= 2;
+    }
+    while(quotaA>0){ const rec = rand(bank[axis][poles[0]]); items.push({ text: withContext(rand(contexts), rec.s), axis, pole:poles[0], pairId: rec.id }); quotaA--; }
+    while(quotaB>0){ const rec = rand(bank[axis][poles[1]]); items.push({ text: withContext(rand(contexts), rec.s), axis, pole:poles[1], pairId: rec.id }); quotaB--; }
+  }
+  return items.sort(()=>Math.random()-0.5);
+}
+
+// ========== 狀態與 UI ==========
+const formEl = document.getElementById("form");
+const submitBtn = document.getElementById("submitBtn");
+const resetBtn = document.getElementById("resetBtn");
+const resetBtn2 = document.getElementById("resetBtn2");
+const progressEl = document.getElementById("progress");
+const barEl = document.getElementById("bar");
+const resultCard = document.getElementById("resultCard");
+const typeText = document.getElementById("typeText");
+const kpiEl = document.getElementById("kpi");
+const analysisEl = document.getElementById("analysis");
+const consistencyEl = document.getElementById("consistency");
+const axisConsistencyEl = document.getElementById("axisConsistency");
+const chooser = document.getElementById("chooser");
+const formActions = document.getElementById("formActions");
+
+let shuffled = [];
+let selectedCount = 30; // default
+
+// 生成題數選項
+(function initChooser(){
+  const optDiv = chooser.querySelector(".opt");
+  [15,30,45,60,75,90].forEach(v=>{
+    const id = "len"+v;
+    const el = document.createElement("label");
+    el.innerHTML = `<input type="radio" name="len" id="${id}" value="${v}" ${v===30?"checked":""}> ${v} 題`;
+    optDiv.appendChild(el);
+  });
+  document.getElementById("startBtn").addEventListener("click", ()=>{
+    const checked = chooser.querySelector('input[name="len"]:checked');
+    selectedCount = parseInt(checked.value,10);
+    startTest();
+  });
+})();
+
+function startTest(){
+  chooser.style.display = "none";
+  formActions.style.display = "flex";
+  shuffled = buildItems(selectedCount);
+  renderForm();
+  updateProgress();
+  window.scrollTo({top:0});
+}
+
+function renderForm(){
+  const frag = document.createDocumentFragment();
+  shuffled.forEach((q, idx) => {
+    const card = document.createElement("div");
+    card.className = "card q";
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="q-title">${q.text}</div>
+      <div class="scale" role="radiogroup" aria-label="同意程度">
+        ${[1,2,3,4,5].map(v => `
+          <label class="pill" data-v="${v}">
+            <input type="radio" name="q${idx}" value="${v}">
+            <span>${v}</span>
+          </label>
+        `).join("")}
+      </div>
+      <div class="legend"><span>非常不同意 1</span><span>非常同意 5</span></div>
+    `;
+    frag.appendChild(card);
+  });
+  formEl.appendChild(frag);
+}
+
+function answeredCount(){
+  return [...document.querySelectorAll('.q')].filter(q => q.querySelector('input:checked')).length;
+}
+
+function updateProgress(){
+  const c = answeredCount();
+  progressEl.textContent = `已作答 ${c} 之 ${shuffled.length}`;
+  barEl.style.width = `${Math.round(100*c/shuffled.length)}%`;
+  submitBtn.disabled = c !== shuffled.length;
+  submitBtn.classList.toggle('enabled', c === shuffled.length);
+}
+
+// 點擊即選擇 自動捲動
+formEl.addEventListener("click", (e)=>{
+  const pill = e.target.closest(".pill");
+  if(!pill) return;
+  const qEl = e.target.closest(".q");
+  const input = pill.querySelector("input");
+  input.checked = true;
+  qEl.querySelectorAll(".pill").forEach(p=>p.classList.remove("checked"));
+  pill.classList.add("checked");
+  updateProgress();
+  const next = qEl.nextElementSibling && qEl.nextElementSibling.classList.contains("q") ? qEl.nextElementSibling : null;
+  if(next){
+    if (navigator.vibrate) navigator.vibrate(6);
+    const top = next.getBoundingClientRect().top + window.scrollY - 70;
+    window.scrollTo({ top, behavior: "smooth" });
+  }else{
+    const btnTop = submitBtn.getBoundingClientRect().top + window.scrollY - 80;
+    window.scrollTo({ top: btnTop, behavior: "smooth" });
+  }
+});
+
+resetBtn.addEventListener("click", ()=>{ location.reload(); });
+if (resetBtn2) resetBtn2.addEventListener("click", ()=>{ location.reload(); });
+
+submitBtn.addEventListener("click", ()=>{
+  if (submitBtn.disabled) return;
+  const scores = {E:0,I:0,S:0,N:0,T:0,F:0,J:0,P:0};
+  const answers = [];
+  shuffled.forEach((q, idx)=>{
+    const checked = document.querySelector(`input[name="q${idx}"]:checked`);
+    const val = parseInt(checked.value,10); // 1..5
+    answers.push({idx, val, axis:q.axis, pole:q.pole, pairId:q.pairId || null});
+    const opp = opposite(q.pole);
+    scores[q.pole] += val;
+    scores[opp] += (6 - val);
+  });
+
+  const detail = {};
+  let type = "";
+  [["E","I","EI"],["S","N","SN"],["T","F","TF"],["J","P","JP"]].forEach(([a,b,axis])=>{
+    const items = shuffled.filter(x => x.axis === axis).length;
+    const total = items * 6;
+    const pa = Math.round(100 * (scores[a] / total));
+    const pb = 100 - pa;
+    const letter = pa >= pb ? a : b;
+    type += letter;
+    detail[axis] = { a, b, pa, pb, letter, gap: Math.abs(pa-pb), items };
+  });
+
+  typeText.textContent = type;
+  kpiEl.innerHTML = [["E","I","EI"],["S","N","SN"],["T","F","TF"],["J","P","JP"]].map(([a,b,axis])=>{
+    const d = detail[axis];
+    return `
+      <div class="item">
+        <h4>${axisLabel(axis)}  ${d.letter}</h4>
+        <div class="bar2"><span style="width:${d.pa}%"></span></div>
+        <div class="legend"><span>${poleLabel(a)} ${d.pa}%</span><span>${poleLabel(b)} ${d.pb}%</span></div>
+        <div class="muted">${tiltText(d)}</div>
+      </div>
+    `;
+  }).join("");
+
+  analysisEl.innerHTML = composeAnalysis(detail);
+
+  // 一致性
+  const overall = computeConsistency(answers);
+  const byAxis = computeAxisConsistency(answers);
+  consistencyEl.innerHTML = `
+    <div>總體一致性 ${Math.round(overall*100)}% <span class="badge">${consistencyLabel(overall*100)}</span></div>
+    <div class="muted">說明 同概念重述題以不同情境出現 將分數對齊後比對差距 越高越一致</div>
+  `;
+  axisConsistencyEl.innerHTML = ["EI","SN","TF","JP"].map(ax=>{
+    const v = byAxis[ax];
+    const text = (v.count>=1) ? `${Math.round(v.score*100)}% <span class="badge">${consistencyLabel(v.score*100)}</span>` : `<span class="muted">資料不足</span>`;
+    return `<div>${axisLabel(ax)} ${text}</div>`;
+  }).join("");
+
+  resultCard.style.display = "block";
+  const top = resultCard.getBoundingClientRect().top + window.scrollY - 70;
+  window.scrollTo({top, behavior:"smooth"});
+});
+
+// ========== 指標計算 ==========
+function opposite(p){ return {E:"I", I:"E", S:"N", N:"S", T:"F", F:"T", J:"P", P:"J"}[p]; }
+function axisLabel(axis){ return {EI:"外向 內向", SN:"實感 直覺", TF:"思考 情感", JP:"判斷 知覺"}[axis]; }
+function poleLabel(p){ return {E:"外向", I:"內向", S:"實感", N:"直覺", T:"思考", F:"情感", J:"判斷", P:"知覺"}[p]; }
+function tiltText(d){ const g=d.gap; if(g>=20) return "明顯傾向"; if(g>=10) return "中度傾向"; return "相對平衡"; }
+function composeAnalysis(detail){
+  const phrases = {E:"偏好互動 以外部刺激獲得能量", I:"偏好獨處 以內在反思充電",
+    S:"重視可驗證事實與細節", N:"著眼概念與未來可能",
+    T:"強調原則邏輯與一致性", F:"重視價值關係與感受影響",
+    J:"喜結構規劃 傾向確定性", P:"重彈性探索 保留開放選項"};
+  const sEI = phrases[detail.EI.letter];
+  const sSN = phrases[detail.SN.letter];
+  const sTF = phrases[detail.TF.letter];
+  const sJP = phrases[detail.JP.letter];
+  return `<div><strong>類型速寫</strong> ${sEI}  ${sSN}  ${sTF}  ${sJP}</div>
+          <div class="muted">說明 本量表反映偏好 非能力高低</div>`;
+}
+
+function computeConsistency(answers){
+  const groups = {};
+  answers.forEach(a=>{
+    if(!a.pairId) return;
+    const main = axisMajor(a.axis);
+    const aligned = a.pole===main ? a.val : (6-a.val);
+    (groups[a.pairId] ||= []).push(aligned);
+  });
+  const list = [];
+  Object.values(groups).forEach(arr=>{
+    if(arr.length>=2){
+      let best = 0;
+      for(let i=0;i<arr.length;i++){
+        for(let j=i+1;j<arr.length;j++){
+          const d = Math.abs(arr[i]-arr[j]); // 0..4
+          const s = 1 - d/4; // 0..1
+          best = Math.max(best, s);
+        }
+      }
+      list.push(best);
+    }
+  });
+  if(list.length===0) return 1;
+  return list.reduce((a,b)=>a+b,0)/list.length;
+}
+function computeAxisConsistency(answers){
+  const res = {EI:{score:0,count:0}, SN:{score:0,count:0}, TF:{score:0,count:0}, JP:{score:0,count:0}};
+  const byAxis = {EI:{}, SN:{}, TF:{}, JP:{}};
+  answers.forEach(a=>{
+    if(!a.pairId) return;
+    const main = axisMajor(a.axis);
+    const aligned = a.pole===main ? a.val : (6-a.val);
+    (byAxis[a.axis][a.pairId] ||= []).push(aligned);
+  });
+  for(const ax of ["EI","SN","TF","JP"]){
+    const arrScores = [];
+    Object.values(byAxis[ax]).forEach(arr=>{
+      if(arr.length>=2){
+        let best = 0;
+        for(let i=0;i<arr.length;i++){
+          for(let j=i+1;j<arr.length;j++){
+            const d = Math.abs(arr[i]-arr[j]);
+            const s = 1 - d/4;
+            best = Math.max(best, s);
+          }
+        }
+        arrScores.push(best);
+      }
+    });
+    res[ax].count = arrScores.length;
+    res[ax].score = arrScores.length? (arrScores.reduce((a,b)=>a+b,0)/arrScores.length) : 0;
+  }
+  return res;
+}
+function axisMajor(axis){ return {EI:"E", SN:"S", TF:"T", JP:"J"}[axis]; }
+function consistencyLabel(p){
+  if(p>=85) return "高一致";
+  if(p>=70) return "良好";
+  if(p>=55) return "普通";
+  return "偏低";
+}
+</script>
+</body>
+</html>
