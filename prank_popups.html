@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>整人彈窗示範（請在同意情境下使用）</title>
+  <style>
+    :root{
+      --bg:#f7f7fb; --card:#ffffff; --text:#111827; --muted:#6b7280; --border:#e5e7eb;
+      --accent:#111827;
+      --radius:16px; --shadow:0 10px 30px rgba(0,0,0,.08);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:var(--bg);
+      font-family: system-ui, -apple-system, "Microsoft JhengHei", Segoe UI, Roboto, Arial, "Noto Sans TC", sans-serif;
+      color:var(--text);
+    }
+    .wrap{
+      max-width:920px; margin:0 auto; padding:42px 20px 80px;
+    }
+    .card{
+      background:var(--card); border:1px solid var(--border); border-radius:var(--radius);
+      box-shadow:var(--shadow); padding:28px;
+    }
+    h1{margin:0 0 12px; font-size:28px; letter-spacing:.3px}
+    p{margin:10px 0; color:#374151; line-height:1.8}
+    .warn{
+      background:#fff7ed; border:1px solid #fed7aa; color:#9a3412;
+      padding:14px 16px; border-radius:12px; margin:14px 0 22px;
+    }
+    .controls{display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:6px}
+    button{
+      border:1px solid var(--border); background:#111827; color:#fff; border-radius:12px; cursor:pointer;
+      padding:12px 18px; font-size:16px; letter-spacing:.5px;
+    }
+    button[disabled]{opacity:.5; cursor:not-allowed}
+    .ghost{
+      background:#fff; color:#111827;
+    }
+    label{font-size:14px; color:var(--muted)}
+    input[type="number"]{width:90px; padding:8px 10px; border:1px solid var(--border); border-radius:10px}
+    .meta{margin-top:10px; font-size:14px; color:var(--muted)}
+    .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+         background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px; padding:2px 6px}
+    footer{margin-top:30px; color:var(--muted); font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>整人彈窗示範</h1>
+      <p class="warn">僅供教學／娛樂，請在所有人知情與同意的情境下使用。請勿用於騷擾或擾亂公共環境。</p>
+
+      <p>說明：現代瀏覽器會阻擋自動彈窗，必須經由一次「使用者點擊」才可大量開啟視窗。下方按 <b>開始</b> 便會持續彈出新視窗，直到按 <b>停止</b> 或按下 <span class="kbd">Esc</span>。</p>
+
+      <div class="controls">
+        <button id="start">開始（連發）</button>
+        <button id="burst" class="ghost">只噴一波</button>
+        <button id="stop" class="ghost" disabled>停止 / 全部關閉</button>
+
+        <label>每波數量
+          <input id="count" type="number" min="1" max="30" value="10" />
+        </label>
+        <label>間隔毫秒
+          <input id="interval" type="number" min="200" max="3000" step="100" value="800" />
+        </label>
+        <label>上限總數
+          <input id="cap" type="number" min="10" max="200" value="60" />
+        </label>
+      </div>
+
+      <div class="meta">目前開啟的視窗數：<span id="live">0</span></div>
+      <footer>小撇步：第一次點擊頁面任一處，也會自動開始（方便「一開就彈」的效果）。</footer>
+    </div>
+  </div>
+
+  <script>
+  (()=>{
+    const $ = (sel)=> document.querySelector(sel);
+    const startBtn = $('#start');
+    const burstBtn = $('#burst');
+    const stopBtn = $('#stop');
+    const liveEl = $('#live');
+    const countEl = $('#count');
+    const ivEl = $('#interval');
+    const capEl = $('#cap');
+
+    /** 追蹤已開啟視窗 */
+    let popups = [];
+    let timer = null;
+
+    /** 移除已關閉的視窗並更新統計 */
+    function sweep(){
+      popups = popups.filter(w => w && !w.closed);
+      liveEl.textContent = popups.length;
+      stopBtn.disabled = (!timer && popups.length === 0);
+      startBtn.disabled = !!timer;
+    }
+
+    setInterval(sweep, 1000);
+
+    function randomInt(min, max){ return Math.floor(Math.random()*(max-min+1))+min; }
+
+    /** 開啟一個彈窗 */
+    function openPopup(i){
+      const w = randomInt(320, 520);
+      const h = randomInt(200, 360);
+      const left = randomInt(0, Math.max(0, (screen.availWidth||window.outerWidth) - w));
+      const top  = randomInt(0, Math.max(0, (screen.availHeight||window.outerHeight) - h));
+      const name = `_prank_${Date.now()}_${i}_${Math.random().toString(36).slice(2,7)}`;
+      const win = window.open('', name, `popup=yes,width=${w},height=${h},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,scrollbars=no,resizable=yes`);
+      if(!win){
+        alert('瀏覽器阻擋了彈出視窗，請在網址列右側允許此網站的彈出視窗後再試。');
+        stopPrank();
+        return null;
+      }
+      try{
+        const bgHue = randomInt(0, 360);
+        win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>驚喜彈窗</title>
+          <style>
+            html,body{height:100%} body{margin:0; display:grid; place-items:center; font-family:system-ui,-apple-system,"Microsoft JhengHei",sans-serif}
+            .box{
+              text-align:center; padding:18px 20px; border-radius:16px;
+              background: hsl(${bgHue} 100% 97%);
+              border: 1px solid hsl(${bgHue} 60% 80%);
+            }
+            h2{margin:0 0 8px; font-size:20px}
+            p{margin:6px 0 12px; color:#374151}
+            button{padding:8px 12px; border-radius:10px; border:1px solid #d1d5db; background:#fff; cursor:pointer}
+          </style>
+        </head><body>
+          <div class="box">
+            <h2>😈 驚喜！</h2>
+            <p>這是示範用的彈窗。</p>
+            <button onclick="window.close()">關閉我</button>
+            <p style="font-size:12px;color:#6b7280;margin-top:8px">按 Esc 可關閉所有彈窗</p>
+          </div>
+        </body></html>`);
+        win.document.close();
+      }catch(e){ /* ignore cross-origin issues */ }
+      return win;
+    }
+
+    function burst(num){
+      const cap = Number(capEl.value)||60;
+      let opened = 0;
+      for(let i=0; i<num; i++){
+        if(popups.length >= cap){ stopPrank(); break; }
+        const w = openPopup(i);
+        if(w){ popups.push(w); opened++; }
+      }
+      sweep();
+      return opened;
+    }
+
+    function startPrank(){
+      if(timer) return;
+      burst(Number(countEl.value)||10);
+      timer = setInterval(()=>{
+        burst(Number(countEl.value)||10);
+      }, Number(ivEl.value)||800);
+      sweep();
+    }
+
+    function stopPrank(){
+      if(timer){ clearInterval(timer); timer = null; }
+      popups.forEach(w=>{ try{ w.close(); }catch(e){} });
+      popups = [];
+      sweep();
+    }
+
+    startBtn.addEventListener('click', startPrank);
+    burstBtn.addEventListener('click', ()=> burst(Number(countEl.value)||10));
+    stopBtn.addEventListener('click', stopPrank);
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape'){ stopPrank(); }
+    });
+
+    // 一開頁面就點任一處，視為開始（符合「打開就彈」的體感）
+    function autoOnce(){ startPrank(); document.removeEventListener('pointerdown', autoOnce); }
+    document.addEventListener('pointerdown', autoOnce, { once:true });
+  })();
+  </script>
+</body>
+</html>
