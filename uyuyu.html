@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>男友標準測試（超不科學版）</title>
+  <style>
+    :root{
+      --bg1:#0f172a; --bg2:#1e293b; --card:#0b1220cc; --text:#e5e7eb; --muted:#94a3b8;
+      --accent:#22d3ee; --accent-2:#a78bfa; --ok:#34d399; --warn:#f59e0b;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: ui-sans-serif, -apple-system, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial;
+      color:var(--text);
+      background: radial-gradient(1200px 800px at 10% -10%, #1b2a52 0%, transparent 60%),
+                  radial-gradient(1200px 800px at 100% 0%, #18213d 0%, transparent 60%),
+                  linear-gradient(160deg, var(--bg1), var(--bg2));
+    }
+    .wrap{max-width: 760px; margin: 6vh auto; padding: 24px;}
+    .card{
+      background: var(--card); backdrop-filter: blur(12px);
+      border: 1px solid #23304a; border-radius: 18px; padding: 28px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+    }
+    h1{margin: 0 0 8px 0; font-size: clamp(22px, 3.2vw, 32px)}
+    .sub{color:var(--muted); margin-bottom: 18px}
+    .progress{height: 8px; background:#1f2b44; border-radius: 99px; overflow:hidden; margin: 12px 0 20px}
+    .bar{height: 100%; width:0%; background: linear-gradient(90deg, var(--accent), var(--accent-2))}
+    .q{font-size: clamp(18px, 2.6vw, 24px); margin: 6px 0 18px}
+    .options{display:grid; gap:12px}
+    .option{
+      text-align:left; padding:14px 16px; border-radius:12px; border:1px solid #22304a;
+      background:#0c1526; color:var(--text); cursor:pointer; transition:.18s transform, .18s border-color, .18s background;
+    }
+    .option:hover{transform: translateY(-1px); border-color:#2a3a5f; background:#0f1930}
+    .option small{display:block; color:var(--muted)}
+    .meta{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:18px 0 6px}
+    .pill{font-size:12px; padding:6px 10px; border:1px dashed #2b3a5c; border-radius:999px; color:#cbd5e1}
+    .footer{color:var(--muted); font-size:12px; text-align:center; margin-top:14px}
+    .result{display:none; text-align:center; padding:20px 6px}
+    .name{
+      font-weight:800; font-size: clamp(32px, 5.6vw, 56px);
+      background: linear-gradient(90deg, #60a5fa, #22d3ee, #a78bfa, #34d399);
+      -webkit-background-clip:text; background-clip:text; color: transparent;
+      letter-spacing: 2px; margin: 6px 0 8px
+    }
+    .tagline{color:#cbd5e1; font-size: 16px}
+    .btns{display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap}
+    .btn{
+      padding:10px 14px; border-radius:10px; border:1px solid #26406b; background:#0c1526; color:var(--text);
+      cursor:pointer; transition:.18s; font-weight:600
+    }
+    .btn:hover{transform: translateY(-1px); background:#0f1b32}
+    .btn.primary{border-color:transparent; background:linear-gradient(90deg, #06b6d4, #8b5cf6)}
+    .confetti{position:fixed; inset:0; pointer-events:none; overflow:hidden}
+    .piece{position:absolute; top:-20px; font-size: 20px; animation: fall linear forwards; opacity:.9}
+    @keyframes fall{
+      to{ transform: translateY(110vh) rotate(720deg); opacity: 1; }
+    }
+    @media (max-width:480px){ .wrap{padding:16px} .card{padding:20px} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>男友標準測試（超不科學版）</h1>
+      <div class="sub">每題都很不嚴肅；怎麼選都一樣偉大。請微笑作答。</div>
+
+      <div class="progress" aria-label="作答進度">
+        <div id="bar" class="bar"></div>
+      </div>
+
+      <div id="quiz">
+        <div class="meta">
+          <span class="pill" id="pill">第 1 題 / 共 6 題</span>
+          <span class="pill">主題：對「男友」的標準</span>
+        </div>
+        <div id="question" class="q">載入中…</div>
+        <div id="options" class="options" role="group" aria-label="選項"></div>
+      </div>
+
+      <div id="result" class="result" aria-live="polite" aria-atomic="true">
+        <div style="font-size:14px; color:#94a3b8; margin-bottom:6px">測驗結果：</div>
+        <div class="name">施宏堉</div>
+        <div class="tagline">最佳男友人選・全票通過（因為題目本來就偏心）</div>
+        <div class="btns">
+          <button class="btn primary" id="shareBtn">分享結果</button>
+          <button class="btn" id="retryBtn">重新測驗</button>
+        </div>
+        <div id="redirectNote" class="footer">將於 1 秒後自動跳轉至 Instagram…</div>
+      </div>
+
+      <div class="footer">※ 純屬娛樂，不代表任何現實世界的嚴肅評分機制。</div>
+    </div>
+  </div>
+  <div id="confetti" class="confetti" aria-hidden="true"></div>
+
+  <script>
+    // ======== 設定：結果後自動跳轉 ========
+    const REDIRECT_URL = 'https://www.instagram.com/hongyu_03_09?igsh=MWMwZ3N2Y2F5a29nOA%3D%3D&utm_source=qr';
+    const REDIRECT_DELAY = 1000; // 1 秒
+    let redirectTimer = null;
+
+    // ======== 題庫（可自行更改） ========
+    const QUESTIONS = [
+      {
+        q: "第一關：遲到 5 分鐘會…",
+        options: [
+          ["買早餐補償，還附貼心小紙條。", "禮貌加分"],
+          ["鞠躬道歉 5 次，承諾下次提早出門。", "誠意不錯"],
+          ["把罪過推給鬧鐘，順便檢討地心引力。", "創意十足"],
+          ["從不遲到——因為我就是傳說中的準時王。", "自信爆棚"]
+        ]
+      },
+      {
+        q: "第二關：紀念日的處理方式？",
+        options: [
+          ["行事曆 + 三重提醒 + 手寫卡片。", "細膩派"],
+          ["臨場發揮驚喜，但記得買蛋糕。", "浪漫派"],
+          ["記不得日期，但記得人超重要。", "重點正確"],
+          ["把每一天都過成紀念日。", "哲學天才"]
+        ]
+      },
+      {
+        q: "第三關：吵架時的默契？",
+        options: [
+          ["先倒水，後溝通，不貼標籤。", "成熟冷靜"],
+          ["寫和解條約，雙方都能加註保留。", "法治精神"],
+          ["貼一張『暫停吵架 10 分鐘』的搞笑貼紙。", "可愛機制"],
+          ["直接投降：『我承認你比較可愛。』", "務實派"]
+        ]
+      },
+      {
+        q: "第四關：手機剩 1% 時會先…",
+        options: [
+          ["找插座，順便幫你手機也充。", "雙倍貼心"],
+          ["啟動省電模式 + 省話模式。", "效率派"],
+          ["把 1% 當 100% 用，活在邊緣的浪漫。", "浪漫派"],
+          ["拔下我的行動電源，只為守護你。", "英雄主義"]
+        ]
+      },
+      {
+        q: "第五關：路上遇到可愛小貓會…",
+        options: [
+          ["先詢問是否能摸，再伸手。", "禮貌至上"],
+          ["拍十張照片傳給你。", "分享狂"],
+          ["幫牠取名『麵條』，立刻成為家族。", "命名大師"],
+          ["喵喵對話 3 回合，結交新朋友。", "語言天賦"]
+        ]
+      },
+      {
+        q: "第六關：出遊風格偏好？",
+        options: [
+          ["精準行程表 + 彈性自由時間。", "策劃王"],
+          ["說走就走，迷路也算風景。", "冒險家"],
+          ["先找美食，再談文化。", "務實吃貨"],
+          ["哪裡有你，哪裡就是目的地。", "超會講話"]
+        ]
+      }
+    ];
+
+    // ======== 狀態 ========
+    let step = 0;
+    const total = QUESTIONS.length;
+
+    // ======== 元素 ========
+    const bar = document.getElementById('bar');
+    const pill = document.getElementById('pill');
+    const qEl = document.getElementById('question');
+    const optsEl = document.getElementById('options');
+    const quizEl = document.getElementById('quiz');
+    const resultEl = document.getElementById('result');
+    const shareBtn = document.getElementById('shareBtn');
+    const retryBtn = document.getElementById('retryBtn');
+    const confettiEl = document.getElementById('confetti');
+
+    // ======== 初始化 ========
+    render();
+
+    function render(){
+      if(step < total){
+        const { q, options } = QUESTIONS[step];
+        pill.textContent = `第 ${step+1} 題 / 共 ${total} 題`;
+        qEl.textContent = q;
+        optsEl.innerHTML = "";
+        options.forEach(([text, sub])=>{
+          const b = document.createElement('button');
+          b.className = 'option';
+          b.innerHTML = `${escapeHtml(text)}<small>${escapeHtml(sub)}</small>`;
+          b.addEventListener('click', ()=>next());
+          optsEl.appendChild(b);
+        });
+        const pct = Math.round((step)/total*100);
+        bar.style.width = pct + '%';
+      }else{
+        showResult();
+      }
+    }
+
+    function next(){
+      step++;
+      if(step < total){
+        microToast('收到！下一題 →');
+      }
+      render();
+    }
+
+    function showResult(){
+      quizEl.style.display = 'none';
+      resultEl.style.display = 'block';
+      bar.style.width = '100%';
+      launchConfetti();
+
+      // 更新提示文字並於 1 秒後自動跳轉
+      const note = document.getElementById('redirectNote');
+      note.textContent = `將於 ${Math.round(REDIRECT_DELAY/1000)} 秒後自動跳轉至 Instagram…`;
+      redirectTimer = setTimeout(()=>{
+        location.href = REDIRECT_URL;
+      }, REDIRECT_DELAY);
+    }
+
+    function microToast(msg){
+      const t = document.createElement('div');
+      t.textContent = msg;
+      Object.assign(t.style, {
+        position:'fixed', left:'50%', top:'14px', transform:'translateX(-50%)',
+        background:'#0b1220', color:'#e5e7eb', border:'1px solid #22304a',
+        padding:'8px 12px', borderRadius:'10px', zIndex:99, boxShadow:'0 8px 24px rgba(0,0,0,.35)', opacity:'0', transition:'.25s'
+      });
+      document.body.appendChild(t);
+      requestAnimationFrame(()=>{ t.style.opacity='1'; });
+      setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translate(-50%, -4px)'; }, 900);
+      setTimeout(()=> t.remove(), 1200);
+    }
+
+    // ======== 分享／重來 ========
+    shareBtn.addEventListener('click', async ()=>{
+      const text = "最佳男友就是：施宏堉 ✅（來自《男友標準測試：超不科學版》）";
+      try{
+        if(navigator.share){
+          await navigator.share({ title: "男友標準測試", text });
+        }else{
+          await navigator.clipboard.writeText(text);
+          microToast("已複製到剪貼簿");
+        }
+      }catch(e){
+        await navigator.clipboard.writeText(text);
+        microToast("已複製到剪貼簿");
+      }
+    });
+
+    retryBtn.addEventListener('click', ()=>{
+      // 取消既有的跳轉計時器，避免誤跳
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+        redirectTimer = null;
+      }
+      step = 0;
+      resultEl.style.display = 'none';
+      quizEl.style.display = 'block';
+      confettiEl.innerHTML = '';
+      bar.style.width = '0%';
+      render();
+    });
+
+    // ======== 極簡彩帶動畫（表情版） ========
+    function launchConfetti(){
+      const emojis = ['🎉','💖','🥳','✨','😎','🎊','🥇','💫'];
+      const pieces = 90;
+      for(let i=0; i<pieces; i++){
+        const s = document.createElement('span');
+        s.className = 'piece';
+        s.textContent = emojis[i % emojis.length];
+        s.style.left = Math.random()*100 + 'vw';
+        s.style.animationDuration = (6 + Math.random()*4) + 's';
+        s.style.fontSize = (18 + Math.random()*12) + 'px';
+        s.style.filter = `hue-rotate(${Math.floor(Math.random()*360)}deg)`;
+        s.style.opacity = (0.7 + Math.random()*0.3);
+        confettiEl.appendChild(s);
+        setTimeout(()=> s.remove(), 11000);
+      }
+    }
+
+    // ======== 安全轉義（避免 XSS 異常） ========
+    function escapeHtml(str){
+      return String(str).replace(/[&<>"']/g, s=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[s]));
+    }
+  </script>
+</body>
+</html>
