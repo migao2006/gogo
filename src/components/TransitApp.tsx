@@ -15,7 +15,13 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import type { BusArrival, MetroArrival, TransitStation, TransportMode } from "@/lib/types";
+import type {
+  BusArrival,
+  BusDirectionGroup,
+  MetroArrival,
+  TransitStation,
+  TransportMode,
+} from "@/lib/types";
 
 const MapView = dynamic(() => import("@/components/MapView"), {
   ssr: false,
@@ -70,7 +76,7 @@ function etaLabel(seconds: number | null, status = 0, nextBusTime?: string): str
   return statusText[status] ?? "暫無預估";
 }
 
-function metroEtaLabel(arrival: MetroArrival): string {
+function metroEtaLabel(arrival: MetroArrival, now: number): string {
   const statusText: Record<number, string> = {
     0: "正常",
     1: "尚未發車",
@@ -78,10 +84,31 @@ function metroEtaLabel(arrival: MetroArrival): string {
     3: "末班車已過",
     4: "今日未營運",
   };
-  if (arrival.estimateSeconds !== null) return etaLabel(arrival.estimateSeconds);
+
+  if (arrival.estimateSeconds !== null) {
+    const calculatedAt = arrival.calculatedAt ? Date.parse(arrival.calculatedAt) : now;
+    const elapsed = Number.isFinite(calculatedAt)
+      ? Math.max(0, Math.floor((now - calculatedAt) / 1_000))
+      : 0;
+    const remaining = Math.max(0, arrival.estimateSeconds - elapsed);
+    if (remaining <= 15) return "即將進站";
+    if (remaining < 60) return `${remaining} 秒`;
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    return `${minutes} 分 ${String(seconds).padStart(2, "0")} 秒`;
+  }
   if (arrival.arrivalTime) return arrival.arrivalTime;
   if (arrival.trainStatus !== undefined) return statusText[arrival.trainStatus] ?? "狀態未知";
   return "暫無預估";
+}
+
+function metroSourceLabel(arrival: MetroArrival): string {
+  if (arrival.source === "official") return "TDX 官方即時";
+  if (arrival.source === "estimated") {
+    return arrival.confidence === "low" ? "系統推估・較低信心" : "系統推估";
+  }
+  if (arrival.source === "schedule") return "時刻表推估";
+  return "TDX 即時資訊";
 }
 
 export default function TransitApp() {
@@ -97,21 +124,34 @@ export default function TransitApp() {
   const [selected, setSelected] = useState<TransitStation | null>(null);
   const [arrivalsLoading, setArrivalsLoading] = useState(false);
   const [busArrivals, setBusArrivals] = useState<BusArrival[]>([]);
+  const [busDirectionGroups, setBusDirectionGroups] = useState<BusDirectionGroup[]>([]);
   const [metroArrivals, setMetroArrivals] = useState<MetroArrival[]>([]);
   const [arrivalMessage, setArrivalMessage] = useState<string | null>(null);
+  const [arrivalWarnings, setArrivalWarnings] = useState<string[]>([]);
+  const [metroSourceSummary, setMetroSourceSummary] = useState<string | null>(null);
+  const [clock, setClock] = useState(0);
   const [query, setQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("tdx-transit-favorites") ?? "[]");
-      if (Array.isArray(saved)) setFavorites(saved.filter((item) => typeof item === "string"));
-    } catch {
-      // Ignore malformed local storage.
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem("tdx-transit-favorites") ?? "[]");
+        if (Array.isArray(saved)) setFavorites(saved.filter((item) => typeof item === "string"));
+      } catch {
+        // Ignore malformed local storage.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (selected?.mode !== "metro") return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [selected?.mode]);
 
   const fetchNearby = useCallback(async (nextCenter: Center, nextRadius = radius) => {
     setLoading(true);
@@ -135,6 +175,7 @@ export default function TransitApp() {
       }));
       setSelected(null);
       setBusArrivals([]);
+      setBusDirectionGroups([]);
       setMetroArrivals([]);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "查詢失敗");
@@ -200,19 +241,34 @@ export default function TransitApp() {
     void fetchNearby(nextCenter);
   };
 
-  const loadArrivals = async (station: TransitStation) => {
+  const loadArrivals = useCallback(async (station: TransitStation, silent = false) => {
     setSelected(station);
-    setArrivalsLoading(true);
-    setArrivalMessage(null);
-    setBusArrivals([]);
-    setMetroArrivals([]);
+    if (!silent) {
+      setArrivalsLoading(true);
+      setArrivalMessage(null);
+      setArrivalWarnings([]);
+      setMetroSourceSummary(null);
+      setBusArrivals([]);
+      setBusDirectionGroups([]);
+      setMetroArrivals([]);
+    }
+
     try {
       if (station.mode === "bus") {
-        const params = new URLSearchParams({ city: station.city ?? "", stopUid: station.uid });
+        const params = new URLSearchParams({ city: station.city ?? "" });
+        if (station.stationId) params.set("stationId", station.stationId);
+        params.set("stopUids", (station.stopUids?.length ? station.stopUids : [station.uid]).join(","));
         const response = await fetch(`/api/bus/arrivals?${params}`, { cache: "no-store" });
-        const data = (await response.json()) as { arrivals?: BusArrival[]; error?: string };
+        const data = (await response.json()) as {
+          arrivals?: BusArrival[];
+          directionGroups?: BusDirectionGroup[];
+          warnings?: string[];
+          error?: string;
+        };
         if (!response.ok) throw new Error(data.error ?? "公車到站資料查詢失敗");
         setBusArrivals(data.arrivals ?? []);
+        setBusDirectionGroups(data.directionGroups ?? []);
+        setArrivalWarnings(data.warnings ?? []);
         if (!data.arrivals?.length) setArrivalMessage("此站目前沒有可顯示的公車到站資料");
       } else {
         const params = new URLSearchParams({
@@ -222,19 +278,35 @@ export default function TransitApp() {
         const response = await fetch(`/api/metro/arrivals?${params}`, { cache: "no-store" });
         const data = (await response.json()) as {
           arrivals?: MetroArrival[];
+          sourceSummary?: string;
+          warnings?: string[];
           message?: string;
           error?: string;
         };
         if (!response.ok) throw new Error(data.error ?? "捷運到站資料查詢失敗");
         setMetroArrivals(data.arrivals ?? []);
+        setMetroSourceSummary(data.sourceSummary ?? null);
+        setArrivalWarnings(data.warnings ?? []);
+        setClock(Date.now());
         if (!data.arrivals?.length) setArrivalMessage(data.message ?? "此站目前沒有可顯示的捷運到站資料");
+        else setArrivalMessage(null);
       }
     } catch (requestError) {
-      setArrivalMessage(requestError instanceof Error ? requestError.message : "即時資訊查詢失敗");
+      if (!silent) {
+        setArrivalMessage(requestError instanceof Error ? requestError.message : "即時資訊查詢失敗");
+      }
     } finally {
-      setArrivalsLoading(false);
+      if (!silent) setArrivalsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!selected || selected.mode !== "metro") return;
+    const timer = window.setInterval(() => {
+      void loadArrivals(selected, true);
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [loadArrivals, selected]);
 
   const changeRadius = (nextRadius: number) => {
     setRadius(nextRadius);
@@ -370,7 +442,16 @@ export default function TransitApp() {
                   </span>
                   <span className="station-copy">
                     <strong>{station.name}</strong>
-                    <small>{station.mode === "bus" ? "公車站" : `${station.operatorId ?? "捷運"} 車站`}{station.address ? `・${station.address}` : ""}</small>
+                    <small>
+                      {station.mode === "bus"
+                        ? station.directionHints?.length
+                          ? `公車站・${station.directionHints.join("／")}`
+                          : station.mergedStopCount && station.mergedStopCount > 1
+                            ? `公車站・已整併 ${station.mergedStopCount} 個站牌資料`
+                            : "公車站・點開查看各方向"
+                        : `${station.operatorId ?? "捷運"} 車站`}
+                      {station.address ? `・${station.address}` : ""}
+                    </small>
                   </span>
                   <span className="distance">{distanceLabel(station.distanceMeters)}</span>
                 </button>
@@ -404,38 +485,81 @@ export default function TransitApp() {
 
             {arrivalsLoading ? <div className="arrival-loading"><RefreshCw size={20} className="spin" />取得即時資料中…</div> : null}
             {!arrivalsLoading && arrivalMessage ? <div className="notice"><AlertTriangle size={18} />{arrivalMessage}</div> : null}
+            {!arrivalsLoading && arrivalWarnings.map((warning) => (
+              <div key={warning} className="notice"><AlertTriangle size={18} />{warning}</div>
+            ))}
 
             {!arrivalsLoading && selected.mode === "bus" ? (
-              <div className="arrival-list">
-                {busArrivals.map((arrival, index) => (
-                  <div key={`${arrival.routeUid ?? arrival.routeName}-${arrival.direction}-${index}`} className="arrival-row">
-                    <strong className="route-badge">{arrival.routeName}</strong>
-                    <div>
-                      <span>往 {arrival.destination}</span>
-                      <small>{arrival.plateNumber ? `車牌 ${arrival.plateNumber}` : "TDX 即時資訊"}</small>
+              <div className="direction-list">
+                {busDirectionGroups.map((group) => (
+                  <section className="direction-group" key={group.key}>
+                    <header className="direction-header">
+                      <div>
+                        <strong><Navigation size={17} />{group.label}</strong>
+                        <span>{group.destinationSummary}</span>
+                      </div>
+                      <b>{group.routes.length} 條路線</b>
+                    </header>
+                    <div className="arrival-list arrival-list--compact">
+                      {group.routes.map((route) => (
+                        <div key={route.key} className="arrival-row bus-route-row">
+                          <strong className="route-badge">{route.routeName}</strong>
+                          <div>
+                            <span>往 {route.destination}</span>
+                            <small>{route.departures[0]?.plateNumber ? `車牌 ${route.departures[0].plateNumber}` : "TDX 即時資訊"}</small>
+                          </div>
+                          <div className="route-times">
+                            {route.departures.map((departure, index) => (
+                              <b key={`${departure.estimateSeconds}-${departure.nextBusTime}-${index}`}>
+                                {index === 1 ? "下班 " : ""}{etaLabel(departure.estimateSeconds, departure.stopStatus, departure.nextBusTime)}
+                              </b>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <b>{etaLabel(arrival.estimateSeconds, arrival.stopStatus, arrival.nextBusTime)}</b>
-                  </div>
+                  </section>
                 ))}
+                {!busDirectionGroups.length && busArrivals.length ? (
+                  <div className="arrival-list">
+                    {busArrivals.map((arrival, index) => (
+                      <div key={`${arrival.routeUid ?? arrival.routeName}-${arrival.direction}-${index}`} className="arrival-row">
+                        <strong className="route-badge">{arrival.routeName}</strong>
+                        <div><span>往 {arrival.destination}</span><small>{arrival.heading ?? "行駛方向未提供"}</small></div>
+                        <b>{etaLabel(arrival.estimateSeconds, arrival.stopStatus, arrival.nextBusTime)}</b>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
             {!arrivalsLoading && selected.mode === "metro" ? (
-              <div className="arrival-list">
-                {metroArrivals.map((arrival, index) => (
-                  <div key={`${arrival.trainNumber ?? arrival.destination}-${index}`} className="arrival-row">
-                    <strong className="route-badge route-badge--metro">{arrival.lineId ?? "捷運"}</strong>
-                    <div>
-                      <span>往 {arrival.destination}</span>
-                      <small>{arrival.platform ? `${arrival.platform} 月台` : arrival.trainNumber ? `列車 ${arrival.trainNumber}` : "TDX 即時資訊"}</small>
+              <>
+                {metroSourceSummary ? <div className="source-summary">資料來源：{metroSourceSummary}・每 15 秒校正</div> : null}
+                <div className="arrival-list">
+                  {metroArrivals.map((arrival, index) => (
+                    <div key={`${arrival.trainNumber ?? arrival.destination}-${index}`} className="arrival-row metro-arrival-row">
+                      <strong className="route-badge route-badge--metro">{arrival.lineId ?? "捷運"}</strong>
+                      <div>
+                        <span>往 {arrival.destination}</span>
+                        <small>
+                          {arrival.currentStationName ? `目前 ${arrival.currentStationName}・` : ""}
+                          {metroSourceLabel(arrival)}
+                        </small>
+                      </div>
+                      <b>{metroEtaLabel(arrival, clock)}</b>
                     </div>
-                    <b>{metroEtaLabel(arrival)}</b>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             ) : null}
 
-            <p className="sheet-note">即時資訊由各運輸業者提供給 TDX；若業者未提供，畫面會顯示暫無資料。</p>
+            <p className="sheet-note">
+              {selected.mode === "metro"
+                ? "官方即時看板有資料時優先採用；其餘班次依列車位置、完整站序與站間行駛時間推估，可能有數十秒誤差。"
+                : "同一實體站牌已整併，路線依下一站方位分組；若 TDX 缺少站序則以去程／返程顯示。"}
+            </p>
           </section>
         </div>
       ) : null}

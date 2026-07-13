@@ -72,6 +72,40 @@ function unwrapItems(payload: unknown): unknown[] {
   return [];
 }
 
+function normalizedBusName(value: string): string {
+  return value
+    .replaceAll("台", "臺")
+    .replaceAll("(", "（")
+    .replaceAll(")", "）")
+    .replace(/\s+/g, "")
+    .replace(/（?(向|往)[東西南北]{1,2}）?$/u, "")
+    .trim();
+}
+
+function busDisplayName(value: string): string {
+  return value
+    .replaceAll("台", "臺")
+    .replaceAll("(", "（")
+    .replaceAll(")", "）")
+    .replace(/\s+/g, " ")
+    .replace(/\s*（?(向|往)[東西南北]{1,2}）?$/u, "")
+    .trim();
+}
+
+function directionHint(...values: Array<string | undefined>): string | undefined {
+  const source = values.filter(Boolean).join(" ");
+  const match = source.match(/(?:向|往)(東北|東南|西北|西南|東|西|南|北)/u);
+  return match ? `向${match[1]}` : undefined;
+}
+
+interface MutableBusGroup {
+  key: string;
+  normalizedName: string;
+  station: TransitStation;
+  stopUids: Set<string>;
+  directionHints: Set<string>;
+}
+
 export function normalizeBusStops(
   payload: unknown,
   originLat: number,
@@ -79,7 +113,8 @@ export function normalizeBusStops(
   city: string,
   radius: number
 ): TransitStation[] {
-  const unique = new Map<string, TransitStation>();
+  const groups: MutableBusGroup[] = [];
+  const stationGroups = new Map<string, MutableBusGroup>();
 
   for (const item of unwrapItems(payload)) {
     const record = asRecord(item);
@@ -92,25 +127,84 @@ export function normalizeBusStops(
     const name = localizedName(record.StopName);
     const uid = text(record.StopUID) ?? text(record.StopID);
     if (!uid || !name.zh) continue;
-    const key = `${uid}:${pos.lat.toFixed(6)}:${pos.lon.toFixed(6)}`;
 
-    unique.set(key, {
-      id: `bus:${uid}`,
-      uid,
-      name: name.zh,
-      englishName: name.en,
-      mode: "bus",
-      latitude: pos.lat,
-      longitude: pos.lon,
-      distanceMeters: Math.round(distance),
-      city,
-      cityCode: text(record.CityCode),
-      address: text(record.StopAddress),
-      stationId: text(record.StationID),
-    });
+    const stationId = text(record.StationID);
+    const address = text(record.StopAddress);
+    const normalizedName = normalizedBusName(name.zh);
+    const hint = directionHint(name.zh, address);
+
+    let group: MutableBusGroup | undefined;
+    if (stationId) {
+      group = stationGroups.get(stationId);
+    }
+
+    if (!group) {
+      group = groups.find((candidate) => {
+        if (candidate.normalizedName !== normalizedName) return false;
+        return haversineDistanceMeters(
+          candidate.station.latitude,
+          candidate.station.longitude,
+          pos.lat!,
+          pos.lon!
+        ) <= 35;
+      });
+    }
+
+    if (!group) {
+      const groupKey = stationId ?? `near:${normalizedName}:${uid}`;
+      group = {
+        key: groupKey,
+        normalizedName,
+        stopUids: new Set<string>(),
+        directionHints: new Set<string>(),
+        station: {
+          id: `bus:${city}:${groupKey}`,
+          uid,
+          name: busDisplayName(name.zh),
+          englishName: name.en,
+          mode: "bus",
+          latitude: pos.lat,
+          longitude: pos.lon,
+          distanceMeters: Math.round(distance),
+          city,
+          cityCode: text(record.CityCode),
+          address,
+          stationId,
+          stopUids: [],
+          directionHints: [],
+          mergedStopCount: 1,
+        },
+      };
+      groups.push(group);
+      if (stationId) stationGroups.set(stationId, group);
+    }
+
+    group.stopUids.add(uid);
+    if (hint) group.directionHints.add(hint);
+
+    if (distance < group.station.distanceMeters) {
+      group.station.uid = uid;
+      group.station.latitude = pos.lat;
+      group.station.longitude = pos.lon;
+      group.station.distanceMeters = Math.round(distance);
+      group.station.address = address ?? group.station.address;
+      group.station.englishName = name.en ?? group.station.englishName;
+    }
+
+    if (!group.station.stationId && stationId) {
+      group.station.stationId = stationId;
+      stationGroups.set(stationId, group);
+    }
   }
 
-  return [...unique.values()].sort((a, b) => a.distanceMeters - b.distanceMeters);
+  return groups
+    .map((group) => ({
+      ...group.station,
+      stopUids: [...group.stopUids].sort(),
+      directionHints: [...group.directionHints],
+      mergedStopCount: group.stopUids.size,
+    }))
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
 }
 
 export function normalizeMetroStations(
@@ -171,11 +265,15 @@ export function normalizeBusArrivals(payload: unknown): BusArrival[] {
       "行駛方向未提供";
     arrivals.push({
       routeUid: text(record.RouteUID),
+      subRouteUid: text(record.SubRouteUID),
       routeName,
       destination,
       direction: numberValue(record.Direction) ?? 0,
       estimateSeconds: numberValue(record.EstimateTime) ?? null,
       stopStatus: numberValue(record.StopStatus) ?? 0,
+      stopUid: text(record.StopUID),
+      stationId: text(record.StationID),
+      stopSequence: numberValue(record.StopSequence),
       plateNumber: text(record.PlateNumb),
       isLastBus: record.IsLastBus === true,
       nextBusTime: text(record.NextBusTime),
@@ -223,13 +321,16 @@ export function normalizeMetroArrivals(payload: unknown): MetroArrival[] {
           ? numberValue(record.EstimateTime)! * 60
           : numberValue(record.CountDown) ??
             numberValue(record.EstimatedTime) ??
-            numberValue(record.ArrivalTime) ??
+            (typeof record.ArrivalTime === "number" ? numberValue(record.ArrivalTime) : undefined) ??
             null,
       platform: text(record.Platform),
-      trainNumber: text(record.TrainNumber),
+      trainNumber: text(record.TrainNumber) ?? text(record.TrainNo),
       arrivalTime: text(record.ArrivalTime),
-      trainStatus: numberValue(record.TrainStatus),
+      trainStatus: numberValue(record.TrainStatus) ?? numberValue(record.ServiceStatus),
       dataTime: text(record.UpdateTime) ?? text(record.SrcUpdateTime),
+      source: "official",
+      confidence: "high",
+      calculatedAt: new Date().toISOString(),
     });
   }
 

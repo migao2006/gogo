@@ -144,3 +144,26 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .notice--error { background: #321e1c; border-color: #62312c; color: #ffb4ad; }
   .skeleton-card { background: linear-gradient(90deg, #1b2a27, #263733, #1b2a27); background-size: 200% 100%; }
 }
+
+.direction-list { display: grid; gap: 14px; margin-top: 18px; }
+.direction-group { overflow: hidden; border: 1px solid var(--border); border-radius: 17px; background: var(--surface); }
+.direction-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 13px 14px; background: var(--surface-soft); border-bottom: 1px solid var(--border); }
+.direction-header > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.direction-header strong { display: flex; align-items: center; gap: 7px; color: var(--primary-dark); }
+.direction-header span { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.direction-header > b { flex: none; border-radius: 999px; background: var(--surface); color: var(--primary-dark); padding: 5px 8px; font-size: 12px; }
+.arrival-list--compact { margin: 0; padding: 9px; }
+.arrival-list--compact .arrival-row { border-radius: 12px; }
+.route-times { min-width: 92px; display: flex !important; align-items: flex-end; gap: 3px !important; text-align: right; }
+.route-times b { color: var(--primary-dark); font-size: 13px; white-space: nowrap; }
+.route-times b + b { color: var(--muted); font-size: 11px; font-weight: 700; }
+.source-summary { margin-top: 15px; border-radius: 12px; background: var(--surface-soft); color: var(--primary-dark); padding: 9px 11px; font-size: 12px; font-weight: 800; }
+.metro-arrival-row small { white-space: normal; line-height: 1.35; }
+
+@media (max-width: 480px) {
+  .direction-header { align-items: center; }
+  .bus-route-row { grid-template-columns: auto minmax(0, 1fr); }
+  .bus-route-row .route-times { grid-column: 2; min-width: 0; align-items: flex-start; text-align: left; }
+  .metro-arrival-row { grid-template-columns: auto minmax(0, 1fr); }
+  .metro-arrival-row > b { grid-column: 2; }
+}

@@ -76,3 +76,35 @@ export function clampRadius(value: number): number {
   if (!Number.isFinite(value)) return 500;
   return Math.min(2_000, Math.max(200, Math.round(value)));
 }
+
+export function bearingDegrees(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const toDegrees = (radians: number) => (radians * 180) / Math.PI;
+  const phi1 = toRadians(lat1);
+  const phi2 = toRadians(lat2);
+  const deltaLon = toRadians(lon2 - lon1);
+  const y = Math.sin(deltaLon) * Math.cos(phi2);
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) -
+    Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLon);
+  return (toDegrees(Math.atan2(y, x)) + 360) % 360;
+}
+
+export function bearingLabel(bearing: number): string {
+  const directions = [
+    "向北",
+    "向東北",
+    "向東",
+    "向東南",
+    "向南",
+    "向西南",
+    "向西",
+    "向西北",
+  ];
+  return directions[Math.round(((bearing % 360) / 45)) % 8];
+}
